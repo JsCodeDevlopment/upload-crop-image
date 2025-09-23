@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useMemo, useRef, useState } from "react";
 import Cropper from "react-easy-crop";
 
@@ -49,7 +50,7 @@ function getRadianAngle(degreeValue: number): number {
 
 function createImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const image = new Image();
+    const image = new window.Image();
     image.addEventListener("load", () => resolve(image));
     image.addEventListener("error", (error) => reject(error));
     image.setAttribute("crossOrigin", "anonymous");
@@ -439,13 +440,14 @@ const ImageCropField = ({
         )}
         {hasValue && (
           <>
-            <img
+            <Image
               src={
                 previewUrl ||
                 (controlledValue ? URL.createObjectURL(controlledValue) : "")
               }
               alt="preview"
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              fill
+              style={{ objectFit: "cover" }}
             />
             <button
               type="button"
