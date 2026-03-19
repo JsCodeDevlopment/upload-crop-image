@@ -46,7 +46,7 @@ src/
 
 ```mermaid
 graph LR
-    A[Input File] -->|URL local| B[Editor (Modal)]
+    A[Input File] -->|URL local| B["Editor (Modal)"]
     B -->|Crop + Zoom + Rotate| C[Canvas]
     C -->|Blob → File| D[RHF Field]
     D -->|value| E[Preview]
