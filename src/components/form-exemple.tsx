@@ -26,55 +26,58 @@ const FormWithImageUpload = () => {
   });
 
   const onSubmit = (data: FormData) => {
-    console.log(data); // Aqui você pode enviar a imagem cortada e outros dados para o servidor
-    alert("Formulário enviado com sucesso!");
+    console.log(data);
+    alert("Formulário enviado com sucesso! Confira o console.");
   };
 
   return (
-    <div className="max-w-md mx-auto p-6 bg-gray-900 rounded-lg shadow-2xl border border-gray-700">
-      <h2 className="text-2xl font-bold text-white mb-6 text-center">
-        Formulário com Upload de Imagem
-      </h2>
-      
+    <div className="w-full">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-200">
-            Nome:
+          <label className="text-xs font-bold text-gray-500 uppercase tracking-widest ml-1">
+            Nome do Usuário
           </label>
           <input 
             type="text" 
             {...register("name")} 
-            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md shadow-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-colors"
-            placeholder="Digite seu nome"
+            className="w-full px-4 py-3 bg-gray-800/50 border border-gray-700 focus:border-blue-500 rounded-2xl shadow-inner text-white placeholder-gray-500 outline-none transition-all"
+            placeholder="Ex: Jonatas Silva"
           />
           {errors.name && (
-            <p className="text-red-400 text-sm mt-1">{errors.name.message}</p>
+            <p className="text-red-500 text-[10px] font-bold uppercase tracking-tight mt-1 ml-1">{errors.name.message}</p>
           )}
         </div>
 
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-200">
-            Imagem:
+          <label className="text-xs font-bold text-gray-500 uppercase tracking-widest ml-1">
+            Foto de Perfil
           </label>
-          <Controller
-            name="image"
-            control={control}
-            render={({ field }) => (
-              <div className="border-2 border-dashed border-gray-600 rounded-lg p-4 hover:border-blue-400 transition-colors bg-gray-800">
-                <ImageCropField field={field} aspect={1} cropShape="round" />
-              </div>
-            )}
-          />
+          <div className="flex justify-center">
+            <Controller
+              name="image"
+              control={control}
+              render={({ field }) => (
+                <ImageCropField 
+                  field={field} 
+                  aspect={1} 
+                  cropShape="round" 
+                  viewportWidth={280}
+                  viewportHeight={280}
+                  label="Selecionar Foto"
+                />
+              )}
+            />
+          </div>
           {errors.image && (
-            <p className="text-red-400 text-sm mt-1">{errors.image.message}</p>
+            <p className="text-red-500 text-[10px] font-bold uppercase tracking-tight mt-1 text-center">{errors.image.message}</p>
           )}
         </div>
 
         <button 
           type="submit"
-          className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-gray-900 transition-colors font-medium"
+          className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-2xl font-bold transition-all shadow-lg shadow-blue-600/20 active:scale-[0.98]"
         >
-          Enviar
+          Salvar Perfil
         </button>
       </form>
     </div>

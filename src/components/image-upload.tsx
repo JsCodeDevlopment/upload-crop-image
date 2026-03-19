@@ -1,11 +1,16 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Cropper from "react-easy-crop";
+import ReactCrop, {
+  centerCrop,
+  makeAspectCrop,
+  type Crop,
+} from "react-image-crop";
+import "react-image-crop/dist/ReactCrop.css";
 
 type ImageCropFieldProps = {
-  // Controlled props from React Hook Form's Controller
   field?: {
     value?: File | null;
     onChange: (file: File | null) => void;
@@ -13,15 +18,13 @@ type ImageCropFieldProps = {
     ref?: (instance: HTMLInputElement | null) => void;
     name?: string;
   };
-  // Or use it as a plain controlled input
   value?: File | null;
   onChange?: (file: File | null) => void;
 
-  // UI/behavior options
-  aspect?: number; // e.g. 1 for square, 4/5 for portrait (overridden by output)
+  aspect?: number;
   cropShape?: "round" | "rect";
-  accept?: string; // e.g. "image/*"
-  maxFileSizeBytes?: number; // simple guard
+  accept?: string;
+  maxFileSizeBytes?: number;
   label?: string;
   instruction?: string;
   viewportWidth?: number;
@@ -33,17 +36,17 @@ type ImageCropFieldProps = {
   className?: string;
   style?: React.CSSProperties;
 
-  // When provided, the output file will be scaled to exactly this size
   output?: {
     width: number;
     height: number;
-    mime?: string; // defaults to image/jpeg
-    quality?: number; // 0..1, defaults to 0.92
-    fileName?: string; // defaults to image.jpg
+    mime?: string;
+    quality?: number;
+    fileName?: string;
   };
-};
 
-// Util helpers
+  allowFreeCrop?: boolean;
+  allowCustomResolution?: boolean;
+};
 function getRadianAngle(degreeValue: number): number {
   return (degreeValue * Math.PI) / 180;
 }
@@ -58,27 +61,21 @@ function createImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-function rotateSize(width: number, height: number, rotation: number) {
-  const rotRad = getRadianAngle(rotation);
-  return {
-    width:
-      Math.abs(Math.cos(rotRad) * width) + Math.abs(Math.sin(rotRad) * height),
-    height:
-      Math.abs(Math.sin(rotRad) * width) + Math.abs(Math.cos(rotRad) * height),
-  };
-}
-
 async function getCroppedImageBlob(
   imageSrc: string,
   pixelCrop: { x: number; y: number; width: number; height: number },
   rotation = 0,
-  options?: { width?: number; height?: number; mime?: string; quality?: number }
+  options?: {
+    width?: number;
+    height?: number;
+    mime?: string;
+    quality?: number;
+  },
 ): Promise<Blob> {
   const image = await createImage(imageSrc);
   const mime = options?.mime || "image/jpeg";
   const quality = options?.quality ?? 0.92;
 
-  // First canvas: draw the rotated image into a large safe area
   const safeArea = Math.max(image.width, image.height) * 2;
   const rotatedCanvas = document.createElement("canvas");
   rotatedCanvas.width = safeArea;
@@ -91,23 +88,19 @@ async function getCroppedImageBlob(
   rctx.drawImage(
     image,
     (safeArea - image.width) / 2,
-    (safeArea - image.height) / 2
+    (safeArea - image.height) / 2,
   );
 
-  // Crop canvas to extract the right pixels (no scaling yet)
   const cropCanvas = document.createElement("canvas");
   cropCanvas.width = Math.round(pixelCrop.width);
   cropCanvas.height = Math.round(pixelCrop.height);
   const cropCtx = cropCanvas.getContext("2d");
   if (!cropCtx) throw new Error("Canvas 2D context not available");
 
-  // Compute offsets to align the selected area from the rotated canvas
   const offsetX = Math.round(-safeArea / 2 + image.width / 2 - pixelCrop.x);
   const offsetY = Math.round(-safeArea / 2 + image.height / 2 - pixelCrop.y);
   const imgData = rctx.getImageData(0, 0, safeArea, safeArea);
   cropCtx.putImageData(imgData, offsetX, offsetY);
-
-  // If an exact output size is requested, scale the cropped result
   const outW = options?.width ?? pixelCrop.width;
   const outH = options?.height ?? pixelCrop.height;
   let outputCanvas = cropCanvas;
@@ -131,7 +124,7 @@ async function getCroppedImageBlob(
       0,
       0,
       scaled.width,
-      scaled.height
+      scaled.height,
     );
     outputCanvas = scaled;
   }
@@ -152,19 +145,12 @@ async function getCroppedImageBlob(
  *
  * 1. **Upload de Imagem**: Interface de seleção de arquivos com validação de tamanho
  * 2. **Editor de Recorte**: Modal com controles interativos para recortar a imagem
- * 3. **Controles Avançados**: Zoom (1x a 3x) e rotação (-45° a +45°)
- * 4. **Formatos de Saída**: Suporte a JPEG e PNG com qualidade configurável
- * 5. **Integração com Formulários**: Compatível com React Hook Form
- * 6. **Responsivo**: Adapta-se a diferentes tamanhos de tela
- *
- * ## Como Funciona:
- *
- * 1. O usuário clica no botão de upload ou na área de preview
- * 2. Seleciona uma imagem do dispositivo (com validação de tamanho)
- * 3. A imagem é carregada no editor modal com controles de recorte
- * 4. O usuário ajusta a posição, zoom e rotação conforme necessário
- * 5. Ao confirmar, a imagem é processada e retornada como File object
- * 6. Uma prévia da imagem recortada é exibida na interface
+ * 3. **Corte Livre**: Opção para desativar a proporção fixa e recortar livremente
+ * 4. **Resolução Manual**: Permite que o usuário defina largura/altura exatas no editor
+ * 5. **Controles Avançados**: Zoom (0.5x a 5x) e rotação (-45° a +45°)
+ * 6. **Formatos de Saída**: Suporte a JPEG e PNG com qualidade configurável
+ * 7. **Integração com Formulários**: Totalmente compatível com React Hook Form
+ * 8. **Responsivo**: Interface adaptável a dispositivos móveis e desktop
  *
  * @param {ImageCropFieldProps} props - Propriedades do componente
  * @param {object} [props.field] - Campo do React Hook Form (obtido via Controller)
@@ -190,89 +176,60 @@ async function getCroppedImageBlob(
  * @param {string} [props.output.mime="image/jpeg"] - Tipo MIME da saída
  * @param {number} [props.output.quality=0.92] - Qualidade da compressão (0-1)
  * @param {string} [props.output.fileName] - Nome do arquivo gerado
+ * @param {boolean} [props.allowFreeCrop=true] - Permitir que o usuário escolha o modo de corte livre
  *
  * @returns {JSX.Element} Componente de upload e recorte de imagens
  *
  * @example
  * // Uso básico com React Hook Form
- * import { Controller, useForm } from "react-hook-form";
- * import ImageCropField from "./ImageCropField";
- *
- * function MeuFormulario() {
- *   const { control, handleSubmit } = useForm();
- *
- *   const onSubmit = (data) => {
- *     console.log("Imagem recortada:", data.avatar);
- *   };
- *
- *   return (
- *     <form onSubmit={handleSubmit(onSubmit)}>
- *       <Controller
- *         name="avatar"
- *         control={control}
- *         render={({ field }) => (
- *           <ImageCropField
- *             field={field}
- *             aspect={1}
- *             cropShape="round"
- *             label="Foto do Perfil"
- *             output={{
- *               width: 200,
- *               height: 200,
- *               quality: 0.8
- *             }}
- *           />
- *         )}
- *       />
- *       <button type="submit">Salvar</button>
- *     </form>
- *   );
- * }
- *
- * @example
- * // Uso como componente controlado
- * import { useState } from "react";
- * import ImageCropField from "./ImageCropField";
- *
- * function MinhaImagem() {
- *   const [imagem, setImagem] = useState(null);
- *
- *   return (
+ * <Controller
+ *   name="avatar"
+ *   control={control}
+ *   render={({ field }) => (
  *     <ImageCropField
- *       value={imagem}
- *       onChange={setImagem}
- *       aspect={16/9}
- *       cropShape="rect"
- *       label="Banner da Página"
- *       viewportWidth={600}
- *       viewportHeight={300}
- *       output={{
- *         width: 1200,
- *         height: 675,
- *         mime: "image/png"
- *       }}
+ *       field={field}
+ *       aspect={1}
+ *       cropShape="round"
+ *       output={{ width: 400, height: 400 }}
+ *       allowFreeCrop={false}
  *     />
- *   );
- * }
+ *   )}
+ * />
  *
  * @example
- * // Configuração avançada para avatares
+ * // Configuração para Corte Livre
  * <ImageCropField
- *   field={field}
- *   aspect={1}
- *   cropShape="round"
- *   maxFileSizeBytes={2 * 1024 * 1024} // 2MB
- *   label="Foto do Perfil"
- *   instruction="Posicione seu rosto no centro"
- *   minZoom={0.5}
- *   maxZoom={5}
- *   initialZoom={1.2}
+ *   value={image}
+ *   onChange={setImage}
+ *   allowFreeCrop={true}
+ *   label="Upload com Corte Livre"
+ * />
+ *
+ * @example
+ * // Banner Retangular Customizado
+ * <ImageCropField
+ *   aspect={16/9}
+ *   cropShape="rect"
+ *   viewportWidth={500}
+ *   viewportHeight={280}
  *   output={{
- *     width: 400,
- *     height: 400,
- *     quality: 0.9,
- *     fileName: "avatar.jpg"
+ *     width: 1920,
+ *     height: 1080,
+ *     quality: 0.95
  *   }}
+ *   allowFreeCrop={false}
+ * />
+ *
+ * @example
+ * // Corte com Resolução Fixa (220x200)
+ * <ImageCropField
+ *   value={customResImage}
+ *   onChange={setCustomResImage}
+ *   output={{ width: 220, height: 200 }}
+ *   label="Corte 220x200"
+ *   viewportWidth={220}
+ *   viewportHeight={200}
+ *   allowFreeCrop={false}
  * />
  *
  * ---
@@ -297,9 +254,52 @@ const ImageCropField = ({
   className,
   style,
   output,
+  allowFreeCrop = false,
 }: ImageCropFieldProps) => {
-  const controlledOnChange = field?.onChange || onChange || (() => {});
   const controlledValue = field?.value ?? value ?? null;
+  const controlledOnChange = useMemo(
+    () => field?.onChange || onChange || (() => {}),
+    [field?.onChange, onChange],
+  );
+
+  const [internalPreviewUrl, setInternalPreviewUrl] = useState<string | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (controlledValue instanceof File) {
+      const url = URL.createObjectURL(controlledValue);
+      setInternalPreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    } else if (typeof controlledValue === "string") {
+      setInternalPreviewUrl(controlledValue);
+    } else {
+      setInternalPreviewUrl(null);
+    }
+  }, [controlledValue]);
+
+  const finalAspect = useMemo(() => {
+    if (aspect) return aspect;
+    if (output?.width && output?.height) return output.width / output.height;
+    return 1;
+  }, [aspect, output]);
+
+  const finalViewportWidth = useMemo(() => {
+    const val = output?.width || viewportWidth || 420;
+    return typeof val === "number" ? val : parseInt(String(val)) || 420;
+  }, [output?.width, viewportWidth]);
+
+  const finalViewportHeight = useMemo(() => {
+    if (output?.height)
+      return typeof output.height === "number"
+        ? output.height
+        : parseInt(String(output.height)) || 420;
+    if (viewportHeight && viewportHeight !== 320)
+      return typeof viewportHeight === "number"
+        ? viewportHeight
+        : parseInt(String(viewportHeight));
+    return finalViewportWidth / finalAspect;
+  }, [finalViewportWidth, finalAspect, output?.height, viewportHeight]);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [imageSrc, setImageSrc] = useState<string | null>(null);
@@ -313,8 +313,22 @@ const ImageCropField = ({
     width: number;
     height: number;
   } | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [ricCrop, setRicCrop] = useState<Crop>();
+  const imgRef = useRef<HTMLImageElement | null>(null);
+
+  const [aspectType, setAspectType] = useState<"fixed" | "free">(
+    allowFreeCrop ? "free" : "fixed",
+  );
+
+  useEffect(() => {
+    if (allowFreeCrop) {
+      setAspectType("free");
+    } else {
+      setAspectType("fixed");
+    }
+  }, [allowFreeCrop]);
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -329,56 +343,96 @@ const ImageCropField = ({
       setImageSrc(localUrl);
       setZoom(initialZoom);
       setRotation(0);
-      setPreviewUrl(null);
       setIsEditorOpen(true);
     },
-    [initialZoom, maxFileSizeBytes]
+    [initialZoom, maxFileSizeBytes],
   );
+
+  const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const { width, height } = e.currentTarget;
+    const initialAspect =
+      aspectType === "fixed"
+        ? output?.width && output?.height
+          ? output.width / output.height
+          : aspect
+        : width / height;
+
+    const crop = centerCrop(
+      makeAspectCrop({ unit: "%", width: 90 }, initialAspect, width, height),
+      width,
+      height,
+    );
+    setRicCrop(crop);
+  };
 
   const onCropComplete = useCallback(
     (
       _area: { x: number; y: number; width: number; height: number },
-      areaPixels: { x: number; y: number; width: number; height: number }
+      areaPixels: { x: number; y: number; width: number; height: number },
     ) => {
       setCroppedAreaPixels(areaPixels);
     },
-    []
+    [],
   );
 
-  const computedAspect = useMemo(() => {
-    if (output && output.width && output.height)
-      return output.width / output.height;
+  const currentAspect = useMemo(() => {
+    if (aspectType === "free") return undefined;
+    if (output?.width && output?.height) return output.width / output.height;
     return aspect;
-  }, [output, aspect]);
+  }, [aspectType, output, aspect]);
 
   const confirmCrop = useCallback(async () => {
     if (!imageSrc || !croppedAreaPixels) return;
+
+    const finalWidth = aspectType === "fixed" ? output?.width : undefined;
+    const finalHeight = aspectType === "fixed" ? output?.height : undefined;
+
     const opts = {
-      width: output?.width,
-      height: output?.height,
+      width: finalWidth,
+      height: finalHeight,
       mime: output?.mime || "image/jpeg",
       quality: output?.quality ?? 0.92,
     } as const;
+
+    let finalCroppedPixels = croppedAreaPixels;
+
+    if (aspectType === "free" && imgRef.current && croppedAreaPixels) {
+      const img = imgRef.current;
+      const scaleX = img.naturalWidth / img.clientWidth;
+      const scaleY = img.naturalHeight / img.clientHeight;
+
+      finalCroppedPixels = {
+        x: croppedAreaPixels.x * scaleX,
+        y: croppedAreaPixels.y * scaleY,
+        width: croppedAreaPixels.width * scaleX,
+        height: croppedAreaPixels.height * scaleY,
+      };
+    }
+
     const blob = await getCroppedImageBlob(
       imageSrc,
-      croppedAreaPixels,
+      finalCroppedPixels!,
       rotation,
-      opts
+      opts,
     );
     const fileName =
       output?.fileName ||
       (opts.mime === "image/png" ? "image.png" : "image.jpg");
     const file = new File([blob], fileName, { type: opts.mime });
     controlledOnChange(file);
-    const url = URL.createObjectURL(blob);
-    setPreviewUrl(url);
     setImageSrc(null);
     setIsEditorOpen(false);
-  }, [controlledOnChange, croppedAreaPixels, imageSrc, rotation, output]);
+  }, [
+    controlledOnChange,
+    croppedAreaPixels,
+    imageSrc,
+    rotation,
+    output,
+    aspectType,
+  ]);
 
   const clearSelection = useCallback(() => {
     setImageSrc(null);
-    setPreviewUrl(null);
     setZoom(1);
     setRotation(0);
     setCroppedAreaPixels(null);
@@ -386,20 +440,18 @@ const ImageCropField = ({
     if (inputRef.current) inputRef.current.value = "";
   }, [controlledOnChange]);
 
-  const hasValue = useMemo(
-    () => !!controlledValue || !!previewUrl,
-    [controlledValue, previewUrl]
-  );
+  const hasValue = !!controlledValue;
+
   const cancelEdit = useCallback(() => {
     setIsEditorOpen(false);
-    if (!previewUrl) {
+    if (!controlledValue && imageSrc) {
       setImageSrc(null);
     }
-  }, [previewUrl]);
+  }, [controlledValue, imageSrc]);
 
   return (
     <div className={className} style={{ display: "grid", gap: 12, ...style }}>
-      <div>
+      <div style={{ display: "none" }}>
         <input
           ref={(node) => {
             inputRef.current = node;
@@ -413,62 +465,56 @@ const ImageCropField = ({
         />
       </div>
 
-      {/* Canvas / placeholder */}
       <div
         style={{
-          width: "100%",
-          maxWidth: viewportWidth,
-          height: viewportHeight,
-          border: "2px solid #9ca3af",
-          borderRadius: 12,
-          background: "#eceffd",
-          color: "#6b7280",
+          width: `${finalViewportWidth}px`,
+          height: `${finalViewportHeight}px`,
+          border: "2px dashed #374151",
+          borderRadius: 24,
+          background: "#111827",
+          color: "#9ca3af",
           position: "relative",
           overflow: "hidden",
-          display: "grid",
-          placeItems: "center",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+          margin: "0 auto",
+          flexShrink: 0,
         }}
+        className="group hover:border-blue-500/50 hover:bg-gray-800/50"
       >
         {!hasValue && (
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            style={{ background: "transparent", color: "inherit" }}
+            className="flex flex-col items-center gap-3 text-gray-400 group-hover:text-white transition-colors"
+            style={{ background: "transparent" }}
           >
-            📁 {label || "Enviar imagem"}
+            <div className="w-12 h-12 rounded-2xl bg-gray-800 border border-gray-700 flex items-center justify-center text-2xl group-hover:scale-110 group-hover:bg-blue-600 group-hover:border-blue-500 transition-all duration-300">
+              🖼️
+            </div>
+            <span className="text-sm font-semibold tracking-tight">
+              {label || "Selecionar imagem"}
+            </span>
           </button>
         )}
-        {hasValue && (
+        {hasValue && internalPreviewUrl && (
           <>
             <Image
-              src={
-                previewUrl ||
-                (controlledValue ? URL.createObjectURL(controlledValue) : "")
-              }
+              src={internalPreviewUrl}
               alt="preview"
               fill
+              unoptimized
               style={{ objectFit: "cover" }}
+              className="animate-in fade-in zoom-in-95 duration-500"
             />
             <button
               type="button"
               onClick={clearSelection}
               title="Remover imagem"
               aria-label="Remover imagem"
-              style={{
-                position: "absolute",
-                top: 8,
-                right: 8,
-                width: 28,
-                height: 28,
-                borderRadius: 999,
-                border: "1px solid rgba(0,0,0,.3)",
-                background: "rgba(0,0,0,.6)",
-                color: "#fff",
-                display: "grid",
-                placeItems: "center",
-                cursor: "pointer",
-                lineHeight: 1,
-              }}
+              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-white flex items-center justify-center hover:bg-red-500 hover:border-red-400 transition-all duration-300 z-10"
             >
               ×
             </button>
@@ -478,7 +524,6 @@ const ImageCropField = ({
 
       {error && <p style={{ color: "#e11d48" }}>{error}</p>}
 
-      {/* Modal editor */}
       {isEditorOpen && imageSrc && (
         <div
           role="dialog"
@@ -512,19 +557,47 @@ const ImageCropField = ({
                 overflow: "hidden",
               }}
             >
-              <Cropper
-                image={imageSrc}
-                crop={crop}
-                zoom={zoom}
-                rotation={rotation}
-                aspect={computedAspect}
-                cropShape={cropShape}
-                onCropChange={setCrop}
-                onZoomChange={setZoom}
-                onRotationChange={setRotation}
-                onCropComplete={onCropComplete}
-                showGrid={showGrid}
-              />
+              {aspectType === "fixed" ? (
+                <Cropper
+                  image={imageSrc}
+                  crop={crop}
+                  zoom={zoom}
+                  rotation={rotation}
+                  aspect={currentAspect}
+                  cropShape={cropShape}
+                  onCropChange={setCrop}
+                  onZoomChange={setZoom}
+                  onRotationChange={setRotation}
+                  onCropComplete={onCropComplete}
+                  showGrid={showGrid}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-gray-900 group">
+                  <ReactCrop
+                    crop={ricCrop}
+                    onChange={(c) => setRicCrop(c)}
+                    onComplete={(c) => setCroppedAreaPixels(c)}
+                    className="max-h-full"
+                  >
+                    <Image
+                      ref={imgRef}
+                      src={imageSrc}
+                      alt="Crop"
+                      onLoad={onImageLoad}
+                      width={1000}
+                      height={1000}
+                      unoptimized
+                      style={{
+                        transform: `rotate(${rotation}deg) scale(${zoom})`,
+                        maxHeight: `${Math.max(360, finalViewportHeight)}px`,
+                        width: "auto",
+                        height: "auto",
+                        objectFit: "contain",
+                      }}
+                    />
+                  </ReactCrop>
+                </div>
+              )}
               {instruction && (
                 <div
                   style={{
@@ -542,9 +615,111 @@ const ImageCropField = ({
                 </div>
               )}
             </div>
-            <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+            {!allowFreeCrop && (
+              <div style={{ display: "grid", gap: 8 }}>
+                <span
+                  style={{ fontSize: 14, fontWeight: 600, color: "#cbd5e1" }}
+                >
+                  Controle de Proporção
+                </span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => setAspectType("fixed")}
+                    style={{
+                      flex: 1,
+                      padding: "8px 12px",
+                      borderRadius: 12,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      background:
+                        aspectType === "fixed" ? "#3b82f6" : "#334155",
+                      color: "white",
+                      border: "1px solid",
+                      borderColor:
+                        aspectType === "fixed" ? "#60a5fa" : "transparent",
+                      cursor: "pointer",
+                      transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background =
+                        aspectType === "fixed" ? "#2563eb" : "#475569")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background =
+                        aspectType === "fixed" ? "#3b82f6" : "#334155")
+                    }
+                  >
+                    Travado (
+                    {output ? `${output.width}x${output.height}` : "Padrão"})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAspectType("free")}
+                    style={{
+                      flex: 1,
+                      padding: "8px 12px",
+                      borderRadius: 12,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      background: aspectType === "free" ? "#3b82f6" : "#334155",
+                      color: "white",
+                      border: "1px solid",
+                      borderColor:
+                        aspectType === "free" ? "#60a5fa" : "transparent",
+                      cursor: "pointer",
+                      transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background =
+                        aspectType === "free" ? "#2563eb" : "#475569")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background =
+                        aspectType === "free" ? "#3b82f6" : "#334155")
+                    }
+                  >
+                    Livre (Ajustável)
+                  </button>
+                </div>
+              </div>
+            )}
+            {allowFreeCrop && (
+              <div style={{ display: "grid", gap: 8 }}>
+                <span
+                  style={{ fontSize: 14, fontWeight: 600, color: "#cbd5e1" }}
+                >
+                  Modo de Edição
+                </span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <div
+                    style={{
+                      flex: 1,
+                      padding: "8px 12px",
+                      borderRadius: 12,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      background: "#3b82f6",
+                      color: "white",
+                      border: "1px solid #60a5fa",
+                      textAlign: "center",
+                    }}
+                  >
+                    Corte Livre Ativo
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 16,
+              }}
+            >
               <label style={{ display: "grid", gap: 4 }}>
-                <span>Zoom</span>
+                <span style={{ fontSize: 13 }}>Zoom</span>
                 <input
                   type="range"
                   min={minZoom}
@@ -552,10 +727,11 @@ const ImageCropField = ({
                   step={0.01}
                   value={zoom}
                   onChange={(e) => setZoom(Number(e.target.value))}
+                  style={{ cursor: "pointer" }}
                 />
               </label>
               <label style={{ display: "grid", gap: 4 }}>
-                <span>Rotação</span>
+                <span style={{ fontSize: 13 }}>Rotação</span>
                 <input
                   type="range"
                   min={-45}
@@ -563,36 +739,37 @@ const ImageCropField = ({
                   step={1}
                   value={rotation}
                   onChange={(e) => setRotation(Number(e.target.value))}
+                  style={{ cursor: "pointer" }}
                 />
               </label>
-              <div
-                style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}
+            </div>
+            <div
+              style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}
+            >
+              <button
+                type="button"
+                onClick={cancelEdit}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 6,
+                  background: "#334155",
+                  color: "white",
+                }}
               >
-                <button
-                  type="button"
-                  onClick={cancelEdit}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 6,
-                    background: "#334155",
-                    color: "white",
-                  }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmCrop}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 6,
-                    background: "#0ea5e9",
-                    color: "white",
-                  }}
-                >
-                  Confirmar
-                </button>
-              </div>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmCrop}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 6,
+                  background: "#0ea5e9",
+                  color: "white",
+                }}
+              >
+                Confirmar
+              </button>
             </div>
           </div>
         </div>
