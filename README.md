@@ -1,57 +1,46 @@
 # Image Crop Field
 
-Componente moderno e reutilizável para upload, recorte, zoom e rotação de imagens, construído com Next.js, TypeScript, React Hook Form, Zod e `react-easy-crop`. Fornece uma experiência de edição em modal com preview e suporte a dimensões de saída exatas.
+Componente de elite para upload e recorte de imagens, ultra-otimizado para o ecossistema moderno do React. Oferece uma experiência de usuário premium com suporte a Next.js 15, TypeScript, React Hook Form e processamento via Canvas API de alto desempenho.
 
 <h1 align="center">
-  <img alt="Preview" title="#Preview" style="object-fit: cover; border-radius: 10px;" src="https://img001.prntscr.com/file/img001/4Kgf7Kp3QoW_qN0Ze-hrFA.png" />
+  <img alt="Preview" title="#Preview" style="object-fit: cover; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.3);" src="https://img.lightshot.app/4Yuwc5bnT8ydTJFICbCujw.png" />
 </h1>
 
-## Funcionalidades
+## ✨ Funcionalidades
 
-- 🖼️ Upload de imagem com validação de tamanho
-- ✂️ Editor em modal com recorte interativo
-- 🔍 Zoom e ↻ rotação controláveis
-- 🟢 Suporte a preview e botão para remover imagem
-- 🧩 Integração simples com React Hook Form + Zod
-- 📐 Saída em dimensões exatas (ex.: 800x800) mantendo aspecto
-- 🟣 Suporte a formato circular (visual) ou retangular
-- ⚙️ Configurável: aspecto, grid, limites de zoom e rótulos
-- ♿ Acessível e responsivo
+- **🚀 Engine Híbrida**: Combina `react-easy-crop` (para melhor UX de arraste/zoom no modo fixo) com `react-image-crop` (para precisão milimétrica no modo livre).
+- **🎨 Visual Premium**: Design em Dark Mode com efeitos de glassmorphism e animações suaves.
+- **✂️ Corte Livre Inteligente**: Alternância em tempo real entre proporção travada e seleção manual de área.
+- **📐 Resolução de Elite**: Gere arquivos finais com dimensões exatas (ex: 1200x630) independente da escala do preview.
+- **🔍 Controles Avançados**: Zoom dinâmico (0.5x a 5x) e rotação precisa (-45° a +45°).
+- **🧩 Integração Nativa RHF**: Totalmente compatível com `Controller` do React Hook Form e validações Zod.
+- **⚡ Next.js 15 Ready**: Otimizado para Turbopack e React 19 (Server/Client components).
 
-## Estrutura do Projeto
+---
 
-```
+## 🛠️ Tecnologias de Ponta
+
+- **Framework**: [Next.js 15](https://nextjs.org/)
+- **Linguagem**: [TypeScript](https://www.typescriptlang.org/)
+- **Estilização**: [Tailwind CSS 4](https://tailwindcss.com/)
+- **Formulários**: [React Hook Form](https://react-hook-form.com/)
+- **Validação**: [Zod](https://zod.dev/)
+- **Engines de Crop**: `react-easy-crop` & `react-image-crop`
+
+---
+
+## 🏗️ Estrutura do Projeto
+
+```text
 src/
-├── app/
-│   ├── layout.tsx
-│   └── page.tsx
+├── app/                  # Rotas e layout (Next.js 15)
 ├── components/
-│   ├── image-upload.tsx      # ImageCropField (componente principal)
-│   └── form-exemple.tsx      # Exemplo de uso com RHF + Zod
-└── public/
-    └── preview.png           # Imagem de preview (opcional)
+│   ├── image-upload.tsx  # Componente Core (ImageCropField)
+│   ├── examples-section.tsx # Seção de Exemplos e Laboratório
+│   ├── form-exemple.tsx  # Implementação de formulário real
+│   └── footer.tsx        # Rodapé institucional
+└── public/               # Ativos estáticos
 ```
-
-## Arquitetura e Design
-
-### Visão Geral
-
-O componente foi projetado para ser plugável em qualquer formulário e para exportar um `File` válido para validação com Zod.
-
-1. **Componentização**
-   - Componente controlado via RHF (`Controller`) ou `value`/`onChange`
-   - Propriedades tipadas em TypeScript
-   - API de configuração enxuta e extensível
-
-2. **Performance**
-   - Recorte feito via Canvas API
-   - Redimensionamento com suavização
-   - Geração do arquivo final sob demanda (Confirmar)
-
-3. **UX/UI**
-   - Modal de edição com grid opcional
-   - Preview preenchendo a área (cover)
-   - Botão “×” para remover no preview
 
 ### Fluxo de Dados
 
@@ -63,19 +52,88 @@ graph LR
     D -->|value| E[Preview]
 ```
 
-### Decisões de Design
+---
 
-1. **Dimensões de Saída**
-   - `output.width`/`output.height` padronizam o arquivo final
-   - Mantêm o aspecto travado para o usuário no editor
+## 🚀 Como Utilizar
 
-2. **Integração com Formulários**
-   - O `File` resultante atende `z.instanceof(File)`
-   - Funciona com `Controller` ou de forma controlada
+### 1. Integração com React Hook Form + Zod
 
-3. **Acessibilidade e UX**
-   - Foco em interações claras e feedback imediato
-   - Botões semanticamente corretos e com rótulos
+Esta é a forma mais poderosa de usar o componente, garantindo que o arquivo final seja validado antes do envio.
+
+```tsx
+import ImageCropField from "@/components/image-upload";
+import { Controller, useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+
+const schema = z.object({
+  avatar: z.instanceof(File).refine((f) => f.size < 2 * 1024 * 1024, "Max 2MB"),
+});
+
+export default function ProfileForm() {
+  const { control, handleSubmit } = useForm({
+    resolver: zodResolver(schema),
+  });
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <Controller
+        name="avatar"
+        control={control}
+        render={({ field }) => (
+          <ImageCropField
+            field={field}
+            aspect={1}
+            cropShape="round"
+            output={{ width: 400, height: 400, quality: 0.9 }}
+            label="Foto de Perfil"
+          />
+        )}
+      />
+    </form>
+  );
+}
+```
+
+### 2. Modo Banner (Widescreen)
+
+```tsx
+<ImageCropField
+  value={banner}
+  onChange={setBanner}
+  aspect={16 / 9}
+  cropShape="rect"
+  output={{ width: 1920, height: 1080 }} // Alta resolução garantida
+  viewportWidth={400} // Tamanho controlado na UI
+/>
+```
+
+---
+
+## ⚙️ Propriedades (Props)
+
+| Prop               | Tipo              | Descrição                                                      |
+| :----------------- | :---------------- | :------------------------------------------------------------- |
+| `field`            | `object`          | Objeto retornado pelo `Controller` do RHF.                     |
+| `aspect`           | `number`          | Proporção do recorte (Ex: `16/9`).                             |
+| `cropShape`        | `round` \| `rect` | Formato visual do seletor.                                     |
+| `output`           | `object`          | Configurações do arquivo final (`width`, `height`, `quality`). |
+| `allowFreeCrop`    | `boolean`         | Habilita o modo de alteração livre de aspecto no editor.       |
+| `viewportWidth`    | `number`          | Largura máxima do preview na interface.                        |
+| `maxFileSizeBytes` | `number`          | Limite de tamanho de arquivo no cliente.                       |
+
+---
+
+## 🔬 Laboratório (Playground)
+
+O projeto conta com uma rota de **Laboratório** onde você pode testar em tempo real:
+
+- Troca de formatos (Círculo vs Retângulo).
+- Ativação/Desativação de Corte Livre.
+- Teste de diferentes proporções.
+- Gerenciamento de Grid e Zoom inicial.
+
+---
 
 ## Tecnologias Utilizadas
 
@@ -88,70 +146,17 @@ graph LR
   <img src="https://img.shields.io/badge/Zod-3E67B1?style=for-the-badge&logo=zod&logoColor=white" />
 </div>
 
-## Como Usar
+## 👨‍💻 Desenvolvedor
 
-### Com React Hook Form + Zod
-
-```tsx
-import ImageCropField from "@/components/image-upload";
-import { Controller, useForm } from "react-hook-form";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-
-const schema = z.object({
-  name: z.string().min(1, "O nome é obrigatório"),
-  image: z.instanceof(File),
-});
-
-type FormData = z.infer<typeof schema>;
-
-export default function Example() {
-  const { control, handleSubmit } = useForm<FormData>({
-    resolver: zodResolver(schema),
-  });
-
-  return (
-    <form onSubmit={handleSubmit(console.log)}>
-      <Controller
-        name="image"
-        control={control}
-        render={({ field }) => (
-          <ImageCropField
-            field={field}
-            label="Enviar imagem"
-            viewportWidth={460}
-            viewportHeight={260}
-            cropShape="round"
-            output={{ width: 800, height: 800, quality: 0.92 }}
-          />
-        )}
-      />
-      <button type="submit">Enviar</button>
-    </form>
-  );
-}
-```
-
-### Props Principais
-
-- `aspect`: proporção do recorte (se `output` não for usado)
-- `cropShape`: `"round" | "rect"`
-- `viewportWidth`/`viewportHeight`: dimensões do preview
-- `minZoom`/`maxZoom`/`initialZoom`: controles de zoom
-- `output`: `{ width, height, mime?, quality?, fileName? }`
-- `label`, `instruction`, `accept`, `maxFileSizeBytes`
-
-## Desenvolvedor
-
-| Foto | Nome | Cargo |
-|------|------|-------|
-| <img src="https://avatars.githubusercontent.com/u/100796752?s=400&u=ae99bd456c6b274cd934d85a374a44340140e222&v=4" width="100"> | [Jonatas Silva](https://github.com/JsCodeDevlopment) | FullStack Developer |
-
-## Licença
-
-Este projeto está sob a licença MIT.
+| Foto                                                                          | Nome              | Perfil                                                   |
+| :---------------------------------------------------------------------------- | :---------------- | :------------------------------------------------------- |
+| <img src="https://avatars.githubusercontent.com/u/100796752?v=4" width="100"> | **Jonatas Silva** | [@JsCodeDevlopment](https://github.com/JsCodeDevlopment) |
 
 ---
+
+## 📄 Licença
+
+Este projeto está sob a licença [MIT](./LICENSE.md).
 
 <div align="center">
   <sub>Built with ❤️ by <a href="https://github.com/JsCodeDevlopment">Jonatas Silva</a></sub>
