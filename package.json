@@ -1,7 +1,19 @@
 {
-  "name": "image-crop",
+  "name": "image-crop-field",
   "version": "0.1.0",
-  "private": true,
+  "description": "Componente de upload e recorte de imagens com interface intuitiva",
+  "author": "Jonatas Silva",
+  "license": "MIT",
+  "keywords": [
+    "image-crop",
+    "react-hook-form",
+    "zod",
+    "nextjs",
+    "typescript",
+    "react-easy-crop"
+  ],
+  "homepage": "https://upload-crop-image.vercel.app",
+  "private": false,
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
